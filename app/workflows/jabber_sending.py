@@ -1,0 +1,90 @@
+import slixmpp
+import logging
+import ssl
+from time import sleep
+import random
+
+from ..utility.base_workflow import BaseWorkflow
+
+WORKFLOW_NAME = 'jabber_activity_emulation'
+WORKFLOW_DESCRIPTION = 'Эмуляция отправки и получения сообщений в Jabber (XMPP) для имитации действий пользователя.'
+
+SENDER_JID = "user1@contoso.com"
+PASSWORD = "123"
+SERVER = "192.168.88.234"  # IP или FQDN XMPP-сервера
+PORT = 5222
+
+DEFAULT_WAIT_TIME = 2
+
+
+def load():
+    return JabberBot()
+
+
+class JabberBot(BaseWorkflow):
+    def __init__(self, input_wait_time=DEFAULT_WAIT_TIME):
+        super().__init__(name=WORKFLOW_NAME, description=WORKFLOW_DESCRIPTION)
+        self.input_wait_time = input_wait_time
+        self.logger = logging.getLogger(__name__)
+        self.ssl_context = ssl.create_default_context()
+        self.ssl_context.check_hostname = False
+        self.ssl_context.verify_mode = ssl.CERT_NONE
+
+    def action(self, extra=None):
+        """Основной метод: эмуляция работы пользователя"""
+        try:
+            xmpp = self.SimpleBot(SENDER_JID, PASSWORD, SERVER, self.logger)
+            xmpp.ssl_context = self.ssl_context
+            if xmpp.connect((SERVER, PORT)):
+                self.logger.info("Подключение к серверу XMPP установлено.")
+                xmpp.process(forever=False)
+            else:
+                self.logger.error("Не удалось подключиться к XMPP-серверу.")
+        except Exception as e:
+            self.logger.error(f"Ошибка в Jabber workflow: {str(e)}")
+            raise
+
+    def cleanup(self):
+        """Очистка"""
+        super().cleanup()
+        self.logger.info("Jabber workflow завершён.")
+
+    class SimpleBot(slixmpp.ClientXMPP):
+        def __init__(self, jid, password, server, logger):
+            super().__init__(jid, password)
+            self.server = server
+            self.logger = logger
+
+            self.add_event_handler("session_start", self.session_start)
+            self.add_event_handler("message", self.message)
+            self.add_event_handler("error", self.handle_error)
+
+        async def session_start(self, event):
+            self.logger.info("Сессия началась.")
+            self.send_presence()
+            await self.get_roster()
+
+            # Имитация пользовательской задержки
+            sleep(random.uniform(1.0, 3.0))
+
+            # Эмуляция отправки сообщений самому себе или другому пользователю
+            messages = [
+                "Привет, ты тут?",
+                "Скинь, пожалуйста, презентацию.",
+                "Уточни, мы сегодня митингуемся в 10:30 или в 11:00?",
+                "Да, получил. Спасибо!"
+            ]
+
+            message = random.choice(messages)
+            self.send_message(mto=self.boundjid.bare, mbody=message, mtype='chat')
+            self.logger.info(f"Сообщение отправлено: {message}")
+
+            # Завершаем сессию, если нужно однократное действие
+            self.disconnect()
+
+        def message(self, msg):
+            if msg['type'] in ('chat', 'normal'):
+                self.logger.info(f"Получено сообщение: {msg['body']}")
+
+        def handle_error(self, error):
+            self.logger.error(f"Ошибка: {error}")
