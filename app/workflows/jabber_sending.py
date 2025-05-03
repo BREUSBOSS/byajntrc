@@ -1,8 +1,9 @@
 import slixmpp
 import logging
 import ssl
-from time import sleep
+import asyncio
 import random
+from time import sleep
 
 from ..utility.base_workflow import BaseWorkflow
 
@@ -11,7 +12,7 @@ WORKFLOW_DESCRIPTION = 'Эмуляция отправки и получения 
 
 SENDER_JID = "user1@contoso.com"
 PASSWORD = "123"
-SERVER = "192.168.88.234"  # IP или FQDN XMPP-сервера
+SERVER = "192.168.88.234"
 PORT = 5222
 
 DEFAULT_WAIT_TIME = 2
@@ -31,21 +32,25 @@ class JabberBot(BaseWorkflow):
         self.ssl_context.verify_mode = ssl.CERT_NONE
 
     def action(self, extra=None):
-        """Основной метод: эмуляция работы пользователя"""
+        """Асинхронный запуск симуляции"""
         try:
-            xmpp = self.SimpleBot(SENDER_JID, PASSWORD, SERVER, self.logger)
-            xmpp.ssl_context = self.ssl_context
-            if xmpp.connect((SERVER, PORT)):
-                self.logger.info("Подключение к серверу XMPP установлено.")
-                xmpp.process(forever=False)
-            else:
-                self.logger.error("Не удалось подключиться к XMPP-серверу.")
+            asyncio.run(self._run_bot())
         except Exception as e:
             self.logger.error(f"Ошибка в Jabber workflow: {str(e)}")
             raise
 
+    async def _run_bot(self):
+        xmpp = self.SimpleBot(SENDER_JID, PASSWORD, SERVER, self.logger)
+        xmpp.ssl_context = self.ssl_context
+
+        # Подключаемся и обрабатываем события
+        connected = await xmpp.connect((SERVER, PORT))
+        if not connected:
+            self.logger.error("Не удалось подключиться к серверу XMPP.")
+            return
+        await xmpp.process()
+
     def cleanup(self):
-        """Очистка"""
         super().cleanup()
         self.logger.info("Jabber workflow завершён.")
 
@@ -64,22 +69,20 @@ class JabberBot(BaseWorkflow):
             self.send_presence()
             await self.get_roster()
 
-            # Имитация пользовательской задержки
-            sleep(random.uniform(1.0, 3.0))
+            sleep(random.uniform(1.0, 3.0))  # эмуляция паузы
 
-            # Эмуляция отправки сообщений самому себе или другому пользователю
             messages = [
-                "Привет, ты тут?",
-                "Скинь, пожалуйста, презентацию.",
-                "Уточни, мы сегодня митингуемся в 10:30 или в 11:00?",
-                "Да, получил. Спасибо!"
+                "Привет, как дела?",
+                "Есть минутка обсудить проект?",
+                "Я на месте. Пиши, если что.",
+                "Давай перенесём на завтра."
             ]
 
             message = random.choice(messages)
             self.send_message(mto=self.boundjid.bare, mbody=message, mtype='chat')
-            self.logger.info(f"Сообщение отправлено: {message}")
+            self.logger.info(f"Отправлено сообщение: {message}")
 
-            # Завершаем сессию, если нужно однократное действие
+            await asyncio.sleep(2)  # ждём и выходим
             self.disconnect()
 
         def message(self, msg):
