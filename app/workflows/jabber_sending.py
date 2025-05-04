@@ -78,16 +78,9 @@ class UserSimBot(ClientXMPP):
         for recipient in recipients:
             await asyncio.sleep(DEFAULT_WAIT_TIME)
 
-            self.send_message(
-                mto=recipient,
-                mbody=None,
-                mtype='chat',
-                mchatstate='composing'
-            )
-
-            await asyncio.sleep(DEFAULT_WAIT_TIME)
-
             body = self.msg_helper.generate_body()
+
+            logging.info(f"Формирую сообщение для {recipient}:\n{body}")
 
             self.send_message(
                 mto=recipient,
@@ -95,16 +88,20 @@ class UserSimBot(ClientXMPP):
                 mtype='chat'
             )
 
-            logging.info(f"Отправлено сообщение с телом:\n{body}")
+            logging.info(f"Сообщение отправлено пользователю {recipient}")
 
         await asyncio.sleep(5)
         self.disconnect()
 
     def message(self, msg):
         if msg['type'] in ('chat', 'normal'):
+            logging.info(f"Получено сообщение от {msg['from']}: {msg['body']}")
+
             response = f"Бот получил ваше сообщение: {msg['body']}"
             msg.reply(response).send()
-            logging.info(f"Ответ отправлен: {response}")
+
+            logging.info(f"Ответ отправлен пользователю {msg['from']}: {response}")
+
             self.disconnect()
 
     def on_disconnected(self, event):
