@@ -80,8 +80,6 @@ class UserSimBot(ClientXMPP):
 
             body = self.msg_helper.generate_body()
 
-            logging.info(f"Формирую сообщение для {recipient}:\n{body}")
-
             self.send_message(
                 mto=recipient,
                 mbody=body,
@@ -95,12 +93,12 @@ class UserSimBot(ClientXMPP):
 
     def message(self, msg):
         if msg['type'] in ('chat', 'normal'):
-            logging.info(f"Получено сообщение от {msg['from']}: {msg['body']}")
+            logging.info(f"Получено сообщение от {msg['from']}")
 
             response = f"Бот получил ваше сообщение: {msg['body']}"
             msg.reply(response).send()
 
-            logging.info(f"Ответ отправлен пользователю {msg['from']}: {response}")
+            logging.info(f"Ответ отправлен пользователю {msg['from']}")
 
             self.disconnect()
 
