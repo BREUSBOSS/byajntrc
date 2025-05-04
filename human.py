@@ -5,6 +5,7 @@ import random
 import sys
 from importlib import import_module
 from time import sleep
+import logging
 
 
 TASK_CLUSTER_COUNT = 5 # Размер кластера задач 
@@ -44,6 +45,16 @@ def load_module(root, file): # Загрузка workflow как модуля
 
 
 def run(clustersize, taskinterval, taskgroupinterval, extra): # Запуск процесса 
+    # Настройка логирования
+    logging.basicConfig(
+        level=logging.INFO,  # или DEBUG, если хочешь больше подробностей
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),  # Лог в консоль
+            # logging.FileHandler("human.log"),  # (опционально) лог в файл
+        ]
+    )
+    
     random.seed()
     workflows = import_workflows() # Импорт workflows 
 
