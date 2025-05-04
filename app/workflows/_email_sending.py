@@ -1,3 +1,5 @@
+# ДОПИСАТЬ ПРОКАЧЕННУЮ ЛОГИКУ С ОТПРАВКОЙ СООБЩЕНИЙ МНОГИМ КЛИЕНТАМ
+
 import smtplib
 import imaplib
 import email
@@ -41,10 +43,14 @@ class EmailSenderReceiver(BaseWorkflow):
 
     def action(self, extra=None):
         """Основной метод выполнения workflow"""
+        action_to_perform = random.choice([self._send_email, self._receive_email])
+
         try:
-            self._send_email()
-            sleep(random.uniform(2, 5))  # Имитация задержки между отправкой и получением
-            self._receive_email()
+            # self._send_email()
+            # sleep(random.uniform(2, 5))  # Имитация задержки между отправкой и получением
+            # self._receive_email()
+            action_to_perform()
+
         except Exception as e:
             self.logger.error(f"Error in email workflow: {str(e)}")
             raise
@@ -71,9 +77,11 @@ class EmailSenderReceiver(BaseWorkflow):
                 server.login(SENDER_USERNAME, SENDER_PASSWORD)
                 server.send_message(msg)
                 self.logger.info(f"Email sent successfully. Subject: {subject}")
+
         except Exception as e:
             self.logger.error(f"Failed to send email: {str(e)}")
             raise
+
         finally:
             self.msg_generator.cleanup()
 
@@ -90,6 +98,7 @@ class EmailSenderReceiver(BaseWorkflow):
             )
             msg.attach(part)
             self.logger.debug(f"Attached file: {file_path}")
+
         except Exception as e:
             self.logger.error(f"Failed to attach file: {str(e)}")
             raise

@@ -1,96 +1,112 @@
-import slixmpp
+import asyncio
 import logging
 import ssl
-import asyncio
-import random
+from slixmpp import ClientXMPP
 from time import sleep
+import random
 
-from ..utility.base_workflow import BaseWorkflow  # Убедись, что путь корректный
+from ..utility.base_workflow import BaseWorkflow
+from ..utility.message_helper import RandomMessageGenerator
 
 WORKFLOW_NAME = 'jabber_activity_emulation'
 WORKFLOW_DESCRIPTION = 'Эмуляция отправки и получения сообщений в Jabber (XMPP) для имитации действий пользователя.'
 
-# Конфигурация пользователя
 SENDER_JID = "user1@contoso.com"
 PASSWORD = "123"
-SERVER = "192.168.88.234"
-PORT = 5222
 
-DEFAULT_WAIT_TIME = 2
+DEFAULT_WAIT_TIME = 2.0
 
 
 def load():
-    return JabberBot()
+    return JabberSenderReceiver()
 
-
-class JabberBot(BaseWorkflow):
+class JabberSenderReceiver(BaseWorkflow):
     def __init__(self, input_wait_time=DEFAULT_WAIT_TIME):
         super().__init__(name=WORKFLOW_NAME, description=WORKFLOW_DESCRIPTION)
         self.input_wait_time = input_wait_time
-        self.logger = logging.getLogger(__name__)
-        self.ssl_context = ssl.create_default_context()
+        self.loop = asyncio.get_event_loop()
+        self.xmpp = None
+
+    def action(self, extra=None):
+        """
+        Основной метод: эмуляция работы пользователя.
+        Запускает XMPP-клиента, ждёт завершения его работы.
+        """
+        self.xmpp = UserSimBot(SENDER_JID, PASSWORD)
+        if self.xmpp.connect():
+            try:
+                self.loop.run_forever()
+            except KeyboardInterrupt:
+                logging.info("Принудительное завершение")
+                self.xmpp.disconnect()
+        else:
+            logging.error("Не удалось подключиться к серверу Jabber")
+
+    def cleanup(self):
+        """Очистка после завершения"""
+        if self.xmpp:
+            self.xmpp.disconnect()
+        if self.loop.is_running():
+            self.loop.stop()
+        super().cleanup()
+        
+
+class UserSimBot(ClientXMPP):
+    def __init__(self, jid, password):
+        super().__init__(jid, password)
+
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
 
-    def action(self, extra=None):
-        """Асинхронный запуск эмуляции действий"""
-        try:
-            asyncio.run(self._run_bot())
-        except Exception as e:
-            self.logger.error(f"Ошибка в Jabber workflow: {str(e)}")
-            raise
-
-    async def _run_bot(self):
-        xmpp = SimpleBot(SENDER_JID, PASSWORD, SERVER, self.logger)
-        xmpp.ssl_context = self.ssl_context
-
-        connected = await xmpp.connect((SERVER, PORT))
-        if not connected:
-            self.logger.error("Не удалось подключиться к серверу XMPP.")
-            return
-        await xmpp.process()
-
-    def cleanup(self):
-        """Очистка ресурсов"""
-        super().cleanup()
-        self.logger.info("Jabber workflow завершён.")
-
-
-class SimpleBot(slixmpp.ClientXMPP):
-    def __init__(self, jid, password, server, logger):
-        super().__init__(jid, password)
-        self.server = server
-        self.logger = logger
-
         self.add_event_handler("session_start", self.session_start)
         self.add_event_handler("message", self.message)
-        self.add_event_handler("error", self.handle_error)
+        self.add_event_handler("disconnected", self.on_disconnected)
+
+        self.msg_helper = RandomMessageGenerator()
 
     async def session_start(self, event):
-        self.logger.info("Сессия началась.")
         self.send_presence()
         await self.get_roster()
 
-        sleep(random.uniform(1.0, 3.0))  # имитация паузы пользователя
+        all_contacts = list(self.client_roster.keys())
+        if not all_contacts:
+            logging.info("Контактов нет, пишу себе.")
+            recipients = [self.boundjid.full]
+        else:
+            recipients = random.sample(all_contacts, k=min(3, len(all_contacts)))
 
-        messages = [
-            "Привет! Как дела?",
-            "Напомни, когда встреча?",
-            "Скинь, пожалуйста, презентацию.",
-            "Да, всё получил, спасибо!",
-            "Буду через 10 минут.",
-        ]
+        for recipient in recipients:
+            await asyncio.sleep(DEFAULT_WAIT_TIME)
 
-        message = random.choice(messages)
-        self.send_message(mto=self.boundjid.bare, mbody=message, mtype='chat')
-        self.logger.info(f"Отправлено сообщение: {message}")
+            self.send_message(
+                mto=recipient,
+                mbody=None,
+                mtype='chat',
+                mchatstate='composing'
+            )
 
-        await asyncio.sleep(2)  # небольшая задержка
+            await asyncio.sleep(DEFAULT_WAIT_TIME)
+
+            body = self.msg_helper.generate_body()
+
+            self.send_message(
+                mto=recipient,
+                mbody=body,
+                mtype='chat'
+            )
+
+            logging.info(f"Отправлено сообщение с телом:\n{body}")
+
+        await asyncio.sleep(5)
         self.disconnect()
 
     def message(self, msg):
         if msg['type'] in ('chat', 'normal'):
-            self.logger.info(f"Получено сообщение: {msg['body']}")
+            response = f"Бот получил ваше сообщение: {msg['body']}"
+            msg.reply(response).send()
+            logging.info(f"Ответ отправлен: {response}")
+            self.disconnect()
 
-    def handle_error(self, error):
-        self.logger.error(f"Ошибка: {error}")
+    def on_disconnected(self, event):
+        logging.info("Бот отключился. Завершаем event loop.")
+        asyncio.get_event_loop().stop()
